@@ -5,14 +5,7 @@ const { promisify } = require('util');
 const writeFile = promisify(fs.writeFile);
 const unlink = promisify(fs.unlink);
 
-const validateApiKey = (apiKey) => {
-    if (!apiKey) {
-        throw new Error('API key is required');
-    }
-    if (apiKey !== process.env.API_KEY) {
-        throw new Error('Invalid API key');
-    }
-};
+
 
 const getVideoId = (url) => {
     const regex = /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/)([^&\n?#]+)/;
@@ -154,7 +147,7 @@ const downloadAudio = async (audioUrl, outputPath) => {
 exports.handler = async (event, context) => {
     const headers = {
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type, X-API-Key',
+        'Access-Control-Allow-Headers': 'Content-Type',
         'Access-Control-Allow-Methods': 'POST, OPTIONS'
     };
 
@@ -175,9 +168,6 @@ exports.handler = async (event, context) => {
     const audioPath = path.join(tempDir, `audio_${Date.now()}.webm`);
 
     try {
-        const apiKey = event.headers['x-api-key'];
-        validateApiKey(apiKey);
-
         const { url } = JSON.parse(event.body);
         if (!url) {
             return {
@@ -252,10 +242,7 @@ exports.handler = async (event, context) => {
         let errorMessage = 'Failed to process video';
         let statusCode = 500;
         
-        if (error.message.includes('API key')) {
-            errorMessage = error.message;
-            statusCode = 401;
-        } else if (error.message.includes('not accessible')) {
+        if (error.message.includes('not accessible')) {
             errorMessage = 'Video is not accessible or may be private';
             statusCode = 404;
         } else if (error.message.includes('not playable')) {

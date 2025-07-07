@@ -1,0 +1,33 @@
+{
+  "name": "youtube-transcriber",
+  "version": "1.0.0",
+  "description": "A simple API service that converts YouTube videos to text transcripts",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "test": "jest"
+  },
+  "keywords": [
+    "youtube",
+    "transcript",
+    "api",
+    "netlify"
+  ],
+  "author": "Rishab Kumar",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
+    "helmet": "^7.1.0",
+    "morgan": "^1.10.0",
+    "vosk": "^0.3.39",
+    "ytdl-core": "^4.11.5"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "nodemon": "^3.0.2"
+  }
+} 

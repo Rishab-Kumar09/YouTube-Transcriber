@@ -1,7 +1,7 @@
 {
   "name": "youtube-transcriber",
   "version": "1.0.0",
-  "description": "YouTube video transcription tool using YouTube's built-in captions",
+  "description": "YouTube video transcription using yt-dlp and OpenAI Whisper",
   "main": "index.js",
   "scripts": {
     "start": "node src/index.js",
@@ -10,14 +10,16 @@
   "keywords": [
     "youtube",
     "transcript",
-    "captions",
+    "whisper",
+    "yt-dlp",
     "api",
     "video",
-    "text"
+    "audio"
   ],
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "openai": "^4.0.0",
     "express": "^4.18.2",
     "cors": "^2.8.5",
     "helmet": "^7.1.0",

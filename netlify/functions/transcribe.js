@@ -1,3 +1,17 @@
+const { OpenAI } = require('openai');
+const { exec } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+const { promisify } = require('util');
+
+const execAsync = promisify(exec);
+const writeFile = promisify(fs.writeFile);
+const unlink = promisify(fs.unlink);
+
+const openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY
+});
+
 const validateApiKey = (apiKey) => {
     if (!apiKey) {
         throw new Error('API key is required');
@@ -13,113 +27,48 @@ const getVideoId = (url) => {
     return match ? match[1] : null;
 };
 
-const getYouTubeTranscript = async (videoId) => {
+const downloadAudio = async (videoUrl, outputPath) => {
     try {
-        // First, get the video page to extract transcript data
-        const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-        const response = await fetch(videoUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.5',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'DNT': '1',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-            }
+        // Using yt-dlp (more reliable than ytdl-core)
+        const command = `yt-dlp -x --audio-format mp3 --audio-quality 0 -o "${outputPath}" "${videoUrl}"`;
+        
+        console.log('Downloading audio with yt-dlp...');
+        const { stdout, stderr } = await execAsync(command, { 
+            timeout: 300000, // 5 minute timeout
+            maxBuffer: 1024 * 1024 * 10 // 10MB buffer
         });
-
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const html = await response.text();
         
-        // Extract the initial data from the page
-        const match = html.match(/"captions":(\{.*?\}),"videoDetails"/);
-        if (!match) {
-            throw new Error('No captions data found in video page');
-        }
-
-        const captionsData = JSON.parse(match[1]);
-        const captionTracks = captionsData?.playerCaptionsTracklistRenderer?.captionTracks;
+        console.log('yt-dlp output:', stdout);
+        if (stderr) console.log('yt-dlp stderr:', stderr);
         
-        if (!captionTracks || captionTracks.length === 0) {
-            throw new Error('No caption tracks available');
-        }
-
-        // Find English captions first, or use the first available
-        let selectedTrack = captionTracks.find(track => 
-            track.languageCode === 'en' || track.languageCode === 'en-US'
-        ) || captionTracks[0];
-
-        if (!selectedTrack?.baseUrl) {
-            throw new Error('No valid caption track found');
-        }
-
-        // Fetch the transcript XML
-        const transcriptResponse = await fetch(selectedTrack.baseUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            }
-        });
-
-        if (!transcriptResponse.ok) {
-            throw new Error(`Failed to fetch transcript: ${transcriptResponse.status}`);
-        }
-
-        const transcriptXml = await transcriptResponse.text();
-        
-        // Parse the XML to extract text
-        const textMatches = transcriptXml.match(/<text[^>]*>([^<]*)<\/text>/g);
-        if (!textMatches || textMatches.length === 0) {
-            throw new Error('No transcript text found in XML');
-        }
-
-        // Clean and combine the text
-        const transcript = textMatches
-            .map(match => {
-                // Extract text content and decode HTML entities
-                const text = match.replace(/<[^>]*>/g, '').trim();
-                return text
-                    .replace(/&amp;/g, '&')
-                    .replace(/&lt;/g, '<')
-                    .replace(/&gt;/g, '>')
-                    .replace(/&quot;/g, '"')
-                    .replace(/&#39;/g, "'");
-            })
-            .filter(text => text.length > 0)
-            .join(' ');
-
-        if (!transcript || transcript.length < 10) {
-            throw new Error('Transcript too short or empty');
-        }
-
-        return transcript;
-
+        return true;
     } catch (error) {
-        console.error('YouTube transcript extraction failed:', error.message);
-        throw error;
+        console.error('yt-dlp failed:', error.message);
+        throw new Error(`Failed to download audio: ${error.message}`);
     }
 };
 
-const getVideoTitle = async (videoId) => {
+const transcribeWithWhisper = async (audioPath) => {
     try {
-        const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-        const response = await fetch(videoUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            }
+        console.log('Transcribing with OpenAI Whisper...');
+        
+        // Read the audio file
+        const audioBuffer = fs.readFileSync(audioPath);
+        
+        // Create a File-like object
+        const audioFile = new File([audioBuffer], 'audio.mp3', { type: 'audio/mp3' });
+        
+        const transcription = await openai.audio.transcriptions.create({
+            file: audioFile,
+            model: "whisper-1",
+            language: "en",
+            response_format: "text"
         });
-
-        const html = await response.text();
-        const titleMatch = html.match(/<title>([^<]+)<\/title>/);
-        if (titleMatch) {
-            return titleMatch[1].replace(' - YouTube', '').trim();
-        }
-        return 'Unknown Title';
+        
+        return transcription;
     } catch (error) {
-        return 'Unknown Title';
+        console.error('Whisper transcription failed:', error.message);
+        throw new Error(`Transcription failed: ${error.message}`);
     }
 };
 
@@ -141,6 +90,10 @@ exports.handler = async (event, context) => {
             body: JSON.stringify({ error: 'Method not allowed' })
         };
     }
+
+    // Create temp file paths
+    const tempDir = '/tmp';
+    const audioPath = path.join(tempDir, `audio_${Date.now()}.mp3`);
 
     try {
         const apiKey = event.headers['x-api-key'];
@@ -170,13 +123,32 @@ exports.handler = async (event, context) => {
             };
         }
 
-        console.log('Extracting transcript for video:', videoId);
+        if (!process.env.OPENAI_API_KEY) {
+            return {
+                statusCode: 500,
+                headers,
+                body: JSON.stringify({ 
+                    success: false, 
+                    error: 'OpenAI API key not configured' 
+                })
+            };
+        }
+
+        console.log('Processing video:', videoId);
         
-        // Get transcript and title in parallel
-        const [transcript, title] = await Promise.all([
-            getYouTubeTranscript(videoId),
-            getVideoTitle(videoId)
-        ]);
+        // Step 1: Download audio
+        await downloadAudio(url, audioPath);
+        
+        // Verify file was created
+        if (!fs.existsSync(audioPath)) {
+            throw new Error('Audio file was not created');
+        }
+        
+        // Step 2: Transcribe with Whisper
+        const transcript = await transcribeWithWhisper(audioPath);
+        
+        // Step 3: Clean up
+        await unlink(audioPath);
 
         return {
             statusCode: 200,
@@ -185,32 +157,36 @@ exports.handler = async (event, context) => {
                 success: true,
                 transcript: transcript,
                 videoId: videoId,
-                title: title,
-                method: 'youtube-captions'
+                method: 'yt-dlp-whisper'
             })
         };
 
     } catch (error) {
         console.error('Error:', error);
         
-        let errorMessage = 'Failed to extract transcript';
+        // Clean up temp file if it exists
+        try {
+            if (fs.existsSync(audioPath)) {
+                await unlink(audioPath);
+            }
+        } catch (cleanupError) {
+            console.error('Cleanup error:', cleanupError);
+        }
+        
+        let errorMessage = 'Failed to process video';
         let statusCode = 500;
         
         if (error.message.includes('API key')) {
             errorMessage = error.message;
             statusCode = 401;
-        } else if (error.message.includes('No captions data found')) {
-            errorMessage = 'No captions available for this video';
-            statusCode = 404;
-        } else if (error.message.includes('No caption tracks available')) {
-            errorMessage = 'Captions are disabled for this video';
-            statusCode = 404;
-        } else if (error.message.includes('HTTP 404')) {
-            errorMessage = 'Video not found or is private';
-            statusCode = 404;
-        } else if (error.message.includes('HTTP 403')) {
-            errorMessage = 'Access denied - video may be restricted';
-            statusCode = 403;
+        } else if (error.message.includes('timeout')) {
+            errorMessage = 'Processing timed out - video may be too long';
+        } else if (error.message.includes('private')) {
+            errorMessage = 'Video is private or restricted';
+        } else if (error.message.includes('not available')) {
+            errorMessage = 'Video is not available';
+        } else if (error.message.includes('OpenAI')) {
+            errorMessage = 'Transcription service error';
         }
 
         return {

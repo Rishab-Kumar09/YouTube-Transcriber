@@ -1,10 +1,8 @@
 const { OpenAI } = require('openai');
-const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { promisify } = require('util');
 
-const execAsync = promisify(exec);
 const writeFile = promisify(fs.writeFile);
 const unlink = promisify(fs.unlink);
 
@@ -27,24 +25,87 @@ const getVideoId = (url) => {
     return match ? match[1] : null;
 };
 
-const downloadAudio = async (videoUrl, outputPath) => {
+const getYouTubeVideoData = async (videoId) => {
     try {
-        // Using yt-dlp (more reliable than ytdl-core)
-        const command = `yt-dlp -x --audio-format mp3 --audio-quality 0 -o "${outputPath}" "${videoUrl}"`;
-        
-        console.log('Downloading audio with yt-dlp...');
-        const { stdout, stderr } = await execAsync(command, { 
-            timeout: 300000, // 5 minute timeout
-            maxBuffer: 1024 * 1024 * 10 // 10MB buffer
+        // Get the video page
+        const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+        const response = await fetch(videoUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
         });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: Video not accessible`);
+        }
+
+        const html = await response.text();
         
-        console.log('yt-dlp output:', stdout);
-        if (stderr) console.log('yt-dlp stderr:', stderr);
+        // Extract the ytInitialPlayerResponse data
+        const match = html.match(/var ytInitialPlayerResponse = ({.+?});/);
+        if (!match) {
+            throw new Error('Could not find video data');
+        }
+
+        const playerResponse = JSON.parse(match[1]);
         
-        return true;
+        if (playerResponse.playabilityStatus?.status !== 'OK') {
+            throw new Error(`Video not playable: ${playerResponse.playabilityStatus?.reason || 'Unknown reason'}`);
+        }
+
+        const formats = playerResponse.streamingData?.adaptiveFormats || [];
+        
+        // Find the best audio format (usually webm or mp4)
+        const audioFormats = formats.filter(format => 
+            format.mimeType && format.mimeType.startsWith('audio/')
+        );
+
+        if (audioFormats.length === 0) {
+            throw new Error('No audio formats found');
+        }
+
+        // Prefer webm audio, then mp4
+        const bestAudio = audioFormats.find(f => f.mimeType.includes('webm')) || 
+                         audioFormats.find(f => f.mimeType.includes('mp4')) || 
+                         audioFormats[0];
+
+        return {
+            title: playerResponse.videoDetails?.title || 'Unknown',
+            audioUrl: bestAudio.url,
+            mimeType: bestAudio.mimeType
+        };
+
     } catch (error) {
-        console.error('yt-dlp failed:', error.message);
-        throw new Error(`Failed to download audio: ${error.message}`);
+        console.error('Failed to get video data:', error.message);
+        throw error;
+    }
+};
+
+const downloadAudio = async (audioUrl, outputPath) => {
+    try {
+        console.log('Downloading audio...');
+        
+        const response = await fetch(audioUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to download audio: ${response.status}`);
+        }
+
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        
+        await writeFile(outputPath, buffer);
+        
+        console.log(`Audio downloaded: ${buffer.length} bytes`);
+        return true;
+
+    } catch (error) {
+        console.error('Audio download failed:', error.message);
+        throw error;
     }
 };
 
@@ -56,7 +117,7 @@ const transcribeWithWhisper = async (audioPath) => {
         const audioBuffer = fs.readFileSync(audioPath);
         
         // Create a File-like object
-        const audioFile = new File([audioBuffer], 'audio.mp3', { type: 'audio/mp3' });
+        const audioFile = new File([audioBuffer], 'audio.webm', { type: 'audio/webm' });
         
         const transcription = await openai.audio.transcriptions.create({
             file: audioFile,
@@ -93,7 +154,7 @@ exports.handler = async (event, context) => {
 
     // Create temp file paths
     const tempDir = '/tmp';
-    const audioPath = path.join(tempDir, `audio_${Date.now()}.mp3`);
+    const audioPath = path.join(tempDir, `audio_${Date.now()}.webm`);
 
     try {
         const apiKey = event.headers['x-api-key'];
@@ -136,18 +197,21 @@ exports.handler = async (event, context) => {
 
         console.log('Processing video:', videoId);
         
-        // Step 1: Download audio
-        await downloadAudio(url, audioPath);
+        // Step 1: Get video data and audio URL
+        const videoData = await getYouTubeVideoData(videoId);
+        
+        // Step 2: Download audio
+        await downloadAudio(videoData.audioUrl, audioPath);
         
         // Verify file was created
         if (!fs.existsSync(audioPath)) {
             throw new Error('Audio file was not created');
         }
         
-        // Step 2: Transcribe with Whisper
+        // Step 3: Transcribe with Whisper
         const transcript = await transcribeWithWhisper(audioPath);
         
-        // Step 3: Clean up
+        // Step 4: Clean up
         await unlink(audioPath);
 
         return {
@@ -157,7 +221,8 @@ exports.handler = async (event, context) => {
                 success: true,
                 transcript: transcript,
                 videoId: videoId,
-                method: 'yt-dlp-whisper'
+                title: videoData.title,
+                method: 'custom-extraction-whisper'
             })
         };
 
@@ -179,12 +244,15 @@ exports.handler = async (event, context) => {
         if (error.message.includes('API key')) {
             errorMessage = error.message;
             statusCode = 401;
-        } else if (error.message.includes('timeout')) {
-            errorMessage = 'Processing timed out - video may be too long';
-        } else if (error.message.includes('private')) {
-            errorMessage = 'Video is private or restricted';
-        } else if (error.message.includes('not available')) {
-            errorMessage = 'Video is not available';
+        } else if (error.message.includes('not accessible')) {
+            errorMessage = 'Video is not accessible or may be private';
+            statusCode = 404;
+        } else if (error.message.includes('not playable')) {
+            errorMessage = 'Video is not playable or restricted';
+            statusCode = 403;
+        } else if (error.message.includes('No audio formats')) {
+            errorMessage = 'No audio available for this video';
+            statusCode = 400;
         } else if (error.message.includes('OpenAI')) {
             errorMessage = 'Transcription service error';
         }

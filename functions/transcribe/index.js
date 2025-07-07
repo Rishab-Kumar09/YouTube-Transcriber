@@ -18,10 +18,26 @@ const validateApiKey = (apiKey) => {
 };
 
 exports.handler = async (event, context) => {
+    // Set CORS headers
+    const headers = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type, X-API-Key',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS'
+    };
+
+    // Handle OPTIONS request (CORS preflight)
+    if (event.httpMethod === 'OPTIONS') {
+        return {
+            statusCode: 204,
+            headers
+        };
+    }
+
     // Only allow POST requests
     if (event.httpMethod !== 'POST') {
         return {
             statusCode: 405,
+            headers,
             body: JSON.stringify({ error: 'Method not allowed' })
         };
     }
@@ -37,6 +53,7 @@ exports.handler = async (event, context) => {
         if (!url) {
             return {
                 statusCode: 400,
+                headers,
                 body: JSON.stringify({ 
                     success: false, 
                     error: 'YouTube URL is required' 
@@ -48,6 +65,7 @@ exports.handler = async (event, context) => {
         if (!ytdl.validateURL(url)) {
             return {
                 statusCode: 400,
+                headers,
                 body: JSON.stringify({ 
                     success: false, 
                     error: 'Invalid YouTube URL' 
@@ -84,6 +102,7 @@ exports.handler = async (event, context) => {
 
         return {
             statusCode: 200,
+            headers,
             body: JSON.stringify({
                 success: true,
                 transcript: transcription
@@ -92,7 +111,8 @@ exports.handler = async (event, context) => {
     } catch (error) {
         console.error('Transcription error:', error);
         return {
-            statusCode: 500,
+            statusCode: error.message.includes('API key') ? 401 : 500,
+            headers,
             body: JSON.stringify({ 
                 success: false, 
                 error: error.message || 'Failed to transcribe video' 

@@ -1,11 +1,10 @@
 [build]
-  command = "npm install"
-  functions = "functions"
   publish = "."
+  functions = "functions"
 
 [functions]
   node_bundler = "esbuild"
-  external_node_modules = ["ytdl-core"]
+  external_node_modules = ["ytdl-core", "openai"]
 
 [[redirects]]
   from = "/api/*"
@@ -18,4 +17,7 @@
   status = 200
 
 [build.environment]
-  NODE_VERSION = "18" 
+  NODE_VERSION = "18"
+
+[functions."transcribe/*"]
+  included_files = ["functions/transcribe/package.json"] 

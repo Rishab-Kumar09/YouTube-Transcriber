@@ -1,0 +1,10 @@
+{
+  "name": "transcribe-function",
+  "version": "1.0.0",
+  "description": "Netlify function for YouTube video transcription",
+  "main": "index.js",
+  "dependencies": {
+    "openai": "^4.24.1",
+    "ytdl-core": "^4.11.5"
+  }
+} 

@@ -23,7 +23,7 @@
     "express-rate-limit": "^7.1.5",
     "helmet": "^7.1.0",
     "morgan": "^1.10.0",
-    "vosk": "^0.3.39",
+    "openai": "^4.24.1",
     "ytdl-core": "^4.11.5"
   },
   "devDependencies": {

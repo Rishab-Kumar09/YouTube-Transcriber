@@ -1,10 +1,10 @@
 [build]
   command = "npm install"
-  publish = "."
-  functions = "src"
+  functions = "functions"
 
 [functions]
   node_bundler = "esbuild"
+  external_node_modules = ["ytdl-core"]
 
 [[redirects]]
   from = "/api/*"

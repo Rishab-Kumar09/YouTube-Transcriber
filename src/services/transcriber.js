@@ -1,11 +1,11 @@
 const ytdl = require('ytdl-core');
-const { Model } = require('vosk');
+const { OpenAI } = require('openai');
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
 
-// Initialize Vosk model
-const model = new Model(path.join(__dirname, '../../models/vosk-model-small-en-us-0.15'));
+const openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY
+});
 
 const transcribeVideo = async (url) => {
     try {
@@ -22,42 +22,31 @@ const transcribeVideo = async (url) => {
 
         // Generate unique filename
         const videoId = ytdl.getVideoID(url);
-        const audioPath = path.join(tempDir, `${videoId}.wav`);
+        const audioPath = path.join(tempDir, `${videoId}.mp3`);
 
         // Download audio only
         await new Promise((resolve, reject) => {
-            ytdl(url, { quality: 'highestaudio' })
-                .pipe(fs.createWriteStream(audioPath))
-                .on('finish', resolve)
-                .on('error', reject);
+            ytdl(url, { 
+                quality: 'highestaudio',
+                filter: 'audioonly' 
+            })
+            .pipe(fs.createWriteStream(audioPath))
+            .on('finish', resolve)
+            .on('error', reject);
         });
 
-        // Convert to required format for Vosk
-        const ffmpeg = spawn('ffmpeg', [
-            '-i', audioPath,
-            '-ar', '16000',
-            '-ac', '1',
-            '-f', 'wav',
-            path.join(tempDir, `${videoId}_converted.wav`)
-        ]);
-
-        await new Promise((resolve, reject) => {
-            ffmpeg.on('close', resolve);
-            ffmpeg.on('error', reject);
+        // Transcribe using Whisper API
+        const transcription = await openai.audio.transcriptions.create({
+            file: fs.createReadStream(audioPath),
+            model: "whisper-1",
+            language: "en", // can be changed based on video language
+            response_format: "text"
         });
-
-        // Read and transcribe the audio
-        const audioBuffer = fs.readFileSync(path.join(tempDir, `${videoId}_converted.wav`));
-        const recognizer = new vosk.Recognizer({ model: model, sampleRate: 16000 });
-        
-        recognizer.acceptWaveform(audioBuffer);
-        const result = recognizer.finalResult();
 
         // Cleanup temp files
         fs.unlinkSync(audioPath);
-        fs.unlinkSync(path.join(tempDir, `${videoId}_converted.wav`));
 
-        return result.text;
+        return transcription;
     } catch (error) {
         console.error('Transcription error:', error);
         throw error;

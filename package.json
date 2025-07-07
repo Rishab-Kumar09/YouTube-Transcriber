@@ -1,12 +1,11 @@
 {
   "name": "youtube-transcriber",
   "version": "1.0.0",
-  "description": "A simple API service that converts YouTube videos to text transcripts",
-  "main": "src/index.js",
+  "description": "YouTube video transcription tool using OpenAI Whisper",
+  "main": "index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js",
-    "test": "jest"
+    "build": "npm install"
   },
   "keywords": [
     "youtube",
@@ -23,8 +22,11 @@
     "express-rate-limit": "^7.1.5",
     "helmet": "^7.1.0",
     "morgan": "^1.10.0",
-    "openai": "^4.24.1",
-    "ytdl-core": "^4.11.5"
+    "openai": "^4.0.0",
+    "ytdl-core": "^4.11.5",
+    "fluent-ffmpeg": "^2.1.2",
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@ffprobe-installer/ffprobe": "^2.1.2"
   },
   "devDependencies": {
     "jest": "^29.7.0",

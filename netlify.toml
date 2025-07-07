@@ -4,7 +4,7 @@
 
 [functions]
   node_bundler = "esbuild"
-  external_node_modules = ["ytdl-core", "openai"]
+  external_node_modules = ["ytdl-core", "openai", "fluent-ffmpeg", "@ffmpeg-installer/ffmpeg", "@ffprobe-installer/ffprobe"]
 
 [[redirects]]
   from = "/api/*"
@@ -12,19 +12,12 @@
   status = 200
 
 [[redirects]]
-  from = "/.netlify/functions/transcribe"
-  to = "/.netlify/functions/transcribe/index"
-  status = 200
-
-[[redirects]]
-  from = "/.netlify/functions/transcribe/*"
-  to = "/.netlify/functions/transcribe/:splat"
-  status = 200
-
-[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
+
+[[plugins]]
+  package = "@netlify/plugin-functions-install-core"
 
 [build.environment]
   NODE_VERSION = "18"

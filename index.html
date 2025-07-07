@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>YouTube Transcriber</title>
+    <title>YouTube Transcript Extractor</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 </head>
 <body class="bg-gray-100 min-h-screen">
     <div class="container mx-auto px-4 py-8">
         <div class="max-w-2xl mx-auto">
-            <h1 class="text-4xl font-bold text-center mb-8 text-gray-800">YouTube Transcriber</h1>
+            <h1 class="text-4xl font-bold text-center mb-8 text-gray-800">YouTube Transcript Extractor</h1>
             
             <div class="bg-white rounded-lg shadow-lg p-6">
                 <div class="mb-4">
@@ -18,12 +18,12 @@
                 </div>
 
                 <button onclick="transcribeVideo()" class="w-full bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
-                    Transcribe
+                    Get Transcript
                 </button>
 
                 <div id="loading" class="hidden mt-4">
                     <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
-                    <p class="text-center text-gray-600 mt-2">Transcribing video...</p>
+                    <p class="text-center text-gray-600 mt-2">Getting transcript from YouTube...</p>
                 </div>
 
                 <div id="result" class="mt-4 hidden">

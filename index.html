@@ -61,7 +61,7 @@
             error.classList.add('hidden');
 
             try {
-                const response = await fetch('/.netlify/functions/transcribe', {
+                const response = await fetch('/.netlify/functions/transcribe/index', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -73,13 +73,14 @@
                 const data = await response.json();
 
                 if (!response.ok) {
-                    throw new Error(data.error || 'Failed to transcribe video');
+                    throw new Error(data.error || `Error ${response.status}: ${response.statusText}`);
                 }
 
                 transcript.value = data.transcript;
                 result.classList.remove('hidden');
             } catch (err) {
-                error.textContent = err.message;
+                console.error('Transcription error:', err);
+                error.textContent = err.message || 'Failed to transcribe video';
                 error.classList.remove('hidden');
             } finally {
                 loading.classList.add('hidden');

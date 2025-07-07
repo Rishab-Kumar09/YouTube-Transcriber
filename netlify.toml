@@ -7,8 +7,13 @@
   external_node_modules = ["ytdl-core", "openai"]
 
 [[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/:splat"
+  from = "/.netlify/functions/transcribe"
+  to = "/.netlify/functions/transcribe/index"
+  status = 200
+
+[[redirects]]
+  from = "/.netlify/functions/transcribe/*"
+  to = "/.netlify/functions/transcribe/:splat"
   status = 200
 
 [[redirects]]

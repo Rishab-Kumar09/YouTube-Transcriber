@@ -1,7 +1,7 @@
 {
   "name": "youtube-transcriber",
   "version": "1.0.0",
-  "description": "YouTube video transcription tool using OpenAI Whisper",
+  "description": "YouTube video transcription tool using YouTube transcript API",
   "main": "index.js",
   "scripts": {
     "start": "node src/index.js",
@@ -11,25 +11,19 @@
     "youtube",
     "transcript",
     "api",
-    "netlify"
+    "video",
+    "text"
   ],
-  "author": "Rishab Kumar",
+  "author": "",
   "license": "MIT",
   "dependencies": {
-    "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
+    "youtube-transcript": "^1.2.1",
     "express": "^4.18.2",
-    "express-rate-limit": "^7.1.5",
+    "cors": "^2.8.5",
     "helmet": "^7.1.0",
-    "morgan": "^1.10.0",
-    "openai": "^4.0.0",
-    "ytdl-core": "^4.11.5",
-    "fluent-ffmpeg": "^2.1.2",
-    "@ffmpeg-installer/ffmpeg": "^1.1.0",
-    "@ffprobe-installer/ffprobe": "^2.1.2"
+    "morgan": "^1.10.0"
   },
   "devDependencies": {
-    "jest": "^29.7.0",
     "nodemon": "^3.0.2"
   }
 } 

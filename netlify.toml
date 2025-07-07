@@ -4,7 +4,7 @@
 
 [functions]
   node_bundler = "esbuild"
-  external_node_modules = ["ytdl-core", "openai", "fluent-ffmpeg", "@ffmpeg-installer/ffmpeg", "@ffprobe-installer/ffprobe"]
+  external_node_modules = ["youtube-transcript"]
 
 [[redirects]]
   from = "/api/*"
@@ -16,11 +16,5 @@
   to = "/index.html"
   status = 200
 
-[[plugins]]
-  package = "@netlify/plugin-functions-install-core"
-
 [build.environment]
-  NODE_VERSION = "18"
-
-[functions."transcribe/*"]
-  included_files = ["functions/transcribe/package.json"] 
+  NODE_VERSION = "18" 

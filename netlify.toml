@@ -4,7 +4,7 @@
 
 [functions]
   node_bundler = "esbuild"
-  external_node_modules = ["youtube-transcript"]
+  external_node_modules = ["ytdl-core", "openai"]
 
 [[redirects]]
   from = "/api/*"

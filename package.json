@@ -1,7 +1,7 @@
 {
   "name": "youtube-transcriber",
   "version": "1.0.0",
-  "description": "YouTube video transcription using yt-dlp and OpenAI Whisper",
+  "description": "YouTube audio extraction test",
   "main": "index.js",
   "scripts": {
     "start": "node src/index.js",
@@ -9,17 +9,13 @@
   },
   "keywords": [
     "youtube",
-    "transcript",
-    "whisper",
-    "yt-dlp",
-    "api",
-    "video",
-    "audio"
+    "audio",
+    "extraction",
+    "test"
   ],
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "openai": "^4.0.0",
     "express": "^4.18.2",
     "cors": "^2.8.5",
     "helmet": "^7.1.0",

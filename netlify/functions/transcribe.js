@@ -1,14 +1,9 @@
-const { OpenAI } = require('openai');
 const fs = require('fs');
 const path = require('path');
 const { promisify } = require('util');
 
 const writeFile = promisify(fs.writeFile);
 const unlink = promisify(fs.unlink);
-
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY
-});
 
 const validateApiKey = (apiKey) => {
     if (!apiKey) {
@@ -27,38 +22,70 @@ const getVideoId = (url) => {
 
 const getYouTubeVideoData = async (videoId) => {
     try {
+        console.log('Fetching video page for:', videoId);
+        
         // Get the video page
         const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
         const response = await fetch(videoUrl, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate, br'
             }
         });
+
+        console.log('Response status:', response.status);
 
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: Video not accessible`);
         }
 
         const html = await response.text();
+        console.log('HTML length:', html.length);
         
-        // Extract the ytInitialPlayerResponse data
-        const match = html.match(/var ytInitialPlayerResponse = ({.+?});/);
-        if (!match) {
-            throw new Error('Could not find video data');
+        // Try multiple patterns to find video data
+        let playerResponse = null;
+        
+        // Pattern 1: var ytInitialPlayerResponse
+        let match = html.match(/var ytInitialPlayerResponse = ({.+?});/);
+        if (match) {
+            console.log('Found ytInitialPlayerResponse');
+            playerResponse = JSON.parse(match[1]);
+        }
+        
+        // Pattern 2: "ytInitialPlayerResponse":
+        if (!playerResponse) {
+            match = html.match(/"ytInitialPlayerResponse":({.+?}),"ytInitialData"/);
+            if (match) {
+                console.log('Found ytInitialPlayerResponse in JSON');
+                playerResponse = JSON.parse(match[1]);
+            }
+        }
+        
+        if (!playerResponse) {
+            throw new Error('Could not find video data in page');
         }
 
-        const playerResponse = JSON.parse(match[1]);
+        console.log('Player response status:', playerResponse.playabilityStatus?.status);
+        console.log('Player response reason:', playerResponse.playabilityStatus?.reason);
         
         if (playerResponse.playabilityStatus?.status !== 'OK') {
             throw new Error(`Video not playable: ${playerResponse.playabilityStatus?.reason || 'Unknown reason'}`);
         }
 
         const formats = playerResponse.streamingData?.adaptiveFormats || [];
+        console.log('Total formats found:', formats.length);
         
-        // Find the best audio format (usually webm or mp4)
+        // Find the best audio format
         const audioFormats = formats.filter(format => 
             format.mimeType && format.mimeType.startsWith('audio/')
         );
+
+        console.log('Audio formats found:', audioFormats.length);
+        audioFormats.forEach((format, i) => {
+            console.log(`Audio ${i}:`, format.mimeType, format.bitrate);
+        });
 
         if (audioFormats.length === 0) {
             throw new Error('No audio formats found');
@@ -69,10 +96,13 @@ const getYouTubeVideoData = async (videoId) => {
                          audioFormats.find(f => f.mimeType.includes('mp4')) || 
                          audioFormats[0];
 
+        console.log('Selected audio format:', bestAudio.mimeType);
+
         return {
             title: playerResponse.videoDetails?.title || 'Unknown',
             audioUrl: bestAudio.url,
-            mimeType: bestAudio.mimeType
+            mimeType: bestAudio.mimeType,
+            bitrate: bestAudio.bitrate
         };
 
     } catch (error) {
@@ -83,53 +113,41 @@ const getYouTubeVideoData = async (videoId) => {
 
 const downloadAudio = async (audioUrl, outputPath) => {
     try {
-        console.log('Downloading audio...');
+        console.log('Starting audio download...');
+        console.log('Audio URL length:', audioUrl.length);
         
         const response = await fetch(audioUrl, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': '*/*',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate, br'
             }
         });
 
+        console.log('Audio download response status:', response.status);
+
         if (!response.ok) {
-            throw new Error(`Failed to download audio: ${response.status}`);
+            throw new Error(`Failed to download audio: ${response.status} ${response.statusText}`);
         }
+
+        const contentLength = response.headers.get('content-length');
+        console.log('Content length:', contentLength);
 
         const arrayBuffer = await response.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
         
         await writeFile(outputPath, buffer);
         
-        console.log(`Audio downloaded: ${buffer.length} bytes`);
-        return true;
+        console.log(`Audio downloaded successfully: ${buffer.length} bytes`);
+        return {
+            size: buffer.length,
+            path: outputPath
+        };
 
     } catch (error) {
         console.error('Audio download failed:', error.message);
         throw error;
-    }
-};
-
-const transcribeWithWhisper = async (audioPath) => {
-    try {
-        console.log('Transcribing with OpenAI Whisper...');
-        
-        // Read the audio file
-        const audioBuffer = fs.readFileSync(audioPath);
-        
-        // Create a File-like object
-        const audioFile = new File([audioBuffer], 'audio.webm', { type: 'audio/webm' });
-        
-        const transcription = await openai.audio.transcriptions.create({
-            file: audioFile,
-            model: "whisper-1",
-            language: "en",
-            response_format: "text"
-        });
-        
-        return transcription;
-    } catch (error) {
-        console.error('Whisper transcription failed:', error.message);
-        throw new Error(`Transcription failed: ${error.message}`);
     }
 };
 
@@ -184,45 +202,38 @@ exports.handler = async (event, context) => {
             };
         }
 
-        if (!process.env.OPENAI_API_KEY) {
-            return {
-                statusCode: 500,
-                headers,
-                body: JSON.stringify({ 
-                    success: false, 
-                    error: 'OpenAI API key not configured' 
-                })
-            };
-        }
-
         console.log('Processing video:', videoId);
         
         // Step 1: Get video data and audio URL
         const videoData = await getYouTubeVideoData(videoId);
+        console.log('Video data retrieved:', videoData.title);
         
         // Step 2: Download audio
-        await downloadAudio(videoData.audioUrl, audioPath);
+        const downloadResult = await downloadAudio(videoData.audioUrl, audioPath);
+        console.log('Download completed:', downloadResult.size, 'bytes');
         
-        // Verify file was created
-        if (!fs.existsSync(audioPath)) {
-            throw new Error('Audio file was not created');
+        // Verify file exists
+        const fileExists = fs.existsSync(audioPath);
+        console.log('File exists:', fileExists);
+        
+        // Clean up for now
+        if (fileExists) {
+            await unlink(audioPath);
+            console.log('Temp file cleaned up');
         }
-        
-        // Step 3: Transcribe with Whisper
-        const transcript = await transcribeWithWhisper(audioPath);
-        
-        // Step 4: Clean up
-        await unlink(audioPath);
 
         return {
             statusCode: 200,
             headers,
             body: JSON.stringify({
                 success: true,
-                transcript: transcript,
+                message: 'Audio downloaded successfully',
                 videoId: videoId,
                 title: videoData.title,
-                method: 'custom-extraction-whisper'
+                audioFormat: videoData.mimeType,
+                bitrate: videoData.bitrate,
+                fileSize: downloadResult.size,
+                step: 'audio-download-only'
             })
         };
 
@@ -248,13 +259,14 @@ exports.handler = async (event, context) => {
             errorMessage = 'Video is not accessible or may be private';
             statusCode = 404;
         } else if (error.message.includes('not playable')) {
-            errorMessage = 'Video is not playable or restricted';
+            errorMessage = `Video is not playable: ${error.message}`;
             statusCode = 403;
         } else if (error.message.includes('No audio formats')) {
             errorMessage = 'No audio available for this video';
             statusCode = 400;
-        } else if (error.message.includes('OpenAI')) {
-            errorMessage = 'Transcription service error';
+        } else if (error.message.includes('Could not find video data')) {
+            errorMessage = 'Could not extract video data from YouTube page';
+            statusCode = 500;
         }
 
         return {
@@ -262,7 +274,8 @@ exports.handler = async (event, context) => {
             headers,
             body: JSON.stringify({ 
                 success: false, 
-                error: errorMessage
+                error: errorMessage,
+                details: error.message
             })
         };
     }
